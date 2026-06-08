@@ -1,166 +1,117 @@
 #include "Flooding.h"
 
+#include <queue>
+#include <set>
+
 SearchResult Flooding::search(
-	P2PNetwork* network,
-	int sourceNodeId,
-	std::string requestedId,
-	int TTL
+    P2PNetwork& network,
+    int sourceNodeId,
+    const std::string& requestedId,
+    int ttl
 )
 {
-	SearchResult sResult;
+    SearchResult result;
+    result.resourceId = requestedId;
+    result.remainingTTL = ttl;
 
-	sResult.resourceId = requestedId;
+    Node* sourceNode = network.getNodeById(sourceNodeId);
 
-	sResult.path = std::vector<int>{ sourceNodeId };
-	sResult.visitedNodes = std::vector<int>{ sourceNodeId };
+    if (sourceNode == nullptr)
+    {
+        return result;
+    }
 
-	sResult.remaningTTL = TTL;
+    std::queue<std::pair<int, int>> queue;
+    std::set<int> visited;
+    std::map<int, int> parent;
 
-	if (TTL == 0)
-	{
-		sResult.success = false;
-		return sResult;
-	}
+    queue.push({ sourceNodeId, ttl });
+    visited.insert(sourceNodeId);
+    result.visitedNodes.push_back(sourceNodeId);
 
-	Node* sourceNode = network->getNodeById(sourceNodeId);
+    if (sourceNode->hasResource(requestedId))
+    {
+        result.success = true;
+        result.foundNode = sourceNodeId;
+        result.path.push_back(sourceNodeId);
+        result.involvedNodesCount = 1;
+        return result;
+    }
 
-	Result result = sourceNode->getResource(requestedId);
+    while (!queue.empty())
+    {
+        auto [currentNodeId, currentTTL] = queue.front();
+        queue.pop();
 
-	if (result.success)
-	{
-		sResult.success = true;
-		sResult.foundNode = sourceNodeId;
-		return sResult;
+        if (currentTTL <= 0)
+        {
+            continue;
+        }
 
-	}
+        const auto& neighbors = network.getNeighbors(currentNodeId);
 
-	std::vector<int> neighbors = network->getAdjacency().at(sourceNodeId);
+        for (int neighborId : neighbors)
+        {
+            result.messageCount++;
 
-	std::queue<int> nodeQueue;
+            if (visited.find(neighborId) != visited.end())
+            {
+                continue;
+            }
 
-	for (auto id : neighbors)
-	{
-		if (id != sourceNodeId)
-			nodeQueue.push(id);
-	}
+            visited.insert(neighborId);
+            parent[neighborId] = currentNodeId;
+            result.visitedNodes.push_back(neighborId);
 
-	while (!nodeQueue.empty())
-	{	
-		int id = nodeQueue.front();
-		nodeQueue.pop();
+            Node* neighbor = network.getNodeById(neighborId);
 
-		Node* neighbor = network->getNodeById(id);
-		auto nResult = flooding(
-			network,
-			sourceNode->getId(),
-			requestedId,
-			TTL,
-			nodeQueue
-		);
+            if (neighbor == nullptr)
+            {
+                continue;
+            }
 
-		sResult.visitedNodes.insert(
-			sResult.visitedNodes.end(),
-			nResult.visitedNodes.begin(),
-			nResult.visitedNodes.end()
-		);
+            if (neighbor->hasResource(requestedId))
+            {
+                result.success = true;
+                result.foundNode = neighborId;
+                result.remainingTTL = currentTTL - 1;
+                result.path = buildPath(sourceNodeId, neighborId, parent);
+                result.involvedNodesCount = static_cast<int>(visited.size());
+                return result;
+            }
 
-		if (nResult.success)
-		{
+            queue.push({ neighborId, currentTTL - 1 });
+        }
+    }
 
-			sResult.success = true;
-			sResult.foundNode = nResult.foundNode;
-			sResult.remaningTTL = nResult.remaningTTL;
-
-			sResult.path.insert(
-				sResult.path.end(),
-				nResult.path.begin(),
-				nResult.path.end()
-			);
-		}
-	}
-
-	return sResult;
+    result.involvedNodesCount = static_cast<int>(visited.size());
+    return result;
 }
 
-SearchResult Flooding::flooding(
-	P2PNetwork* network,
-	int sourceNodeId,
-	std::string requestedId,
-	int TTL,
-	std::queue<int> nodeQueue
-)
+std::vector<int> Flooding::buildPath(
+    int sourceNodeId,
+    int foundNodeId,
+    const std::map<int, int>& parent
+) const
 {
-	SearchResult sResult;
+    std::vector<int> path;
+    int current = foundNodeId;
 
-	sResult.resourceId = requestedId;
+    path.push_back(current);
 
-	sResult.path = std::vector<int>{ sourceNodeId };
-	sResult.visitedNodes = std::vector<int>{ sourceNodeId };
+    while (current != sourceNodeId)
+    {
+        auto it = parent.find(current);
 
-	sResult.remaningTTL = TTL;
+        if (it == parent.end())
+        {
+            break;
+        }
 
-	if (TTL == 0)
-	{
-		sResult.success = false;
-		return sResult;
-	}
+        current = it->second;
+        path.push_back(current);
+    }
 
-	Node* sourceNode = network->getNodeById(sourceNodeId);
-
-	Result result = sourceNode->getResource(requestedId);
-
-	if (result.success)
-	{
-		sResult.success = true;
-		sResult.foundNode = sourceNodeId;
-		return sResult;
-
-	}
-
-	std::vector<int> neighbors = network->getAdjacency().at(sourceNodeId);
-
-	std::queue<int> nodeQueue;
-
-	for (auto id : neighbors)
-	{
-		if (id != sourceNodeId)
-			nodeQueue.push(id);
-	}
-
-	while (!nodeQueue.empty())
-	{
-		int id = nodeQueue.front();
-		nodeQueue.pop();
-
-		Node* neighbor = network->getNodeById(id);
-		auto nResult = flooding(
-			network,
-			sourceNode->getId(),
-			requestedId,
-			TTL - 1,
-			nodeQueue
-		);
-
-		sResult.visitedNodes.insert(
-			sResult.visitedNodes.end(),
-			nResult.visitedNodes.begin(),
-			nResult.visitedNodes.end()
-		);
-
-		if (nResult.success)
-		{
-
-			sResult.success = true;
-			sResult.foundNode = nResult.foundNode;
-			sResult.remaningTTL = nResult.remaningTTL;
-
-			sResult.path.insert(
-				sResult.path.end(),
-				nResult.path.begin(),
-				nResult.path.end()
-			);
-		}
-	}
-
-	return sResult;
+    std::reverse(path.begin(), path.end());
+    return path;
 }

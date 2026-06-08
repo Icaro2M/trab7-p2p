@@ -1,24 +1,24 @@
 #pragma once
 
 #include "Search.h"
-#include "SearchResult.h"
-#include <queue>
+
+#include <map>
+#include <vector>
 
 class Flooding : public Search
 {
-	SearchResult search(
-		P2PNetwork* network,
-		int sourceNodeId,
-		std::string requestedId,
-		int TTL
-	) override;
+public:
+    SearchResult search(
+        P2PNetwork& network,
+        int sourceNodeId,
+        const std::string& requestedId,
+        int ttl
+    ) override;
 
 private:
-	SearchResult flooding(
-		P2PNetwork* network,
-		int sourceNodeId,
-		std::string requestedId,
-		int TTL,
-		std::queue<int> nodeQueue
-	);
+    std::vector<int> buildPath(
+        int sourceNodeId,
+        int foundNodeId,
+        const std::map<int, int>& parent
+    ) const;
 };

@@ -4,6 +4,6 @@
 
 struct Result
 {
-	bool success = false;
-	Resource content;
+    bool success = false;
+    Resource content;
 };

@@ -1,36 +1,61 @@
 #include "Node.h"
 
-Node::Node(
-	int id,
-	std::vector<Resource> resources
-)
-	: id(id), resources(resources)
+Node::Node(int id, std::vector<Resource> resources)
+    : id(id),
+    resources(std::move(resources))
 {
 }
 
-const int Node::getId() const
+int Node::getId() const
 {
-	return id;
+    return id;
 }
 
 const std::vector<Resource>& Node::getResources() const
 {
-	return resources;
+    return resources;
 }
 
-Result Node::getResource(std::string& id)
+Result Node::getResource(const std::string& resourceId) const
 {
-	Result result;
+    Result result;
 
-	for (auto res : resources)
-	{
-		if (res.id == id)
-		{
-			result.content = res;
-			result.success = true;
-			break;
-		}
-	}
+    for (const auto& resource : resources)
+    {
+        if (resource.id == resourceId)
+        {
+            result.success = true;
+            result.content = resource;
+            return result;
+        }
+    }
 
-	return;
+    return result;
+}
+
+bool Node::hasResource(const std::string& resourceId) const
+{
+    return getResource(resourceId).success;
+}
+
+void Node::updateCache(const std::string& resourceId, int ownerNodeId)
+{
+    cache[resourceId] = ownerNodeId;
+}
+
+bool Node::hasCachedResource(const std::string& resourceId) const
+{
+    return cache.find(resourceId) != cache.end();
+}
+
+int Node::getCachedOwner(const std::string& resourceId) const
+{
+    auto it = cache.find(resourceId);
+
+    if (it == cache.end())
+    {
+        return -1;
+    }
+
+    return it->second;
 }

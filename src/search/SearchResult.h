@@ -1,20 +1,19 @@
 #pragma once
 
-#include <vector>
 #include <string>
+#include <vector>
 
 struct SearchResult
 {
-	std::string resourceId;
+    std::string resourceId;
+    bool success = false;
 
-	bool success = false;
+    std::vector<int> path;
+    std::vector<int> visitedNodes;
 
-	std::vector<int> path;
+    int foundNode = -1;
+    int remainingTTL = 0;
 
-	std::vector<int> visitedNodes;
-
-	int foundNode;
-
-	int remaningTTL;
-
+    int messageCount = 0;
+    int involvedNodesCount = 0;
 };

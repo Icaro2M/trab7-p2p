@@ -1,153 +1,84 @@
 #include "RandomSearch.h"
 
+#include <random>
+#include <set>
+
 SearchResult RandomSearch::search(
-	P2PNetwork* network,
-	int sourceNodeId,
-	std::string requestedId,
-	int TTL
-) 
-{
-	SearchResult sResult;
-
-	sResult.resourceId = requestedId;
-
-	sResult.path = std::vector<int>{ sourceNodeId };
-	sResult.visitedNodes = std::vector<int>{ sourceNodeId };
-
-	sResult.remaningTTL = TTL;
-
-	if (TTL == 0)
-	{
-		sResult.success = false;
-		return sResult;
-	}
-
-	Node* sourceNode = network->getNodeById(sourceNodeId);
-
-	Result result = sourceNode->getResource(requestedId);
-
-	if (result.success)
-	{
-		sResult.success = true;
-		sResult.foundNode = sourceNodeId;
-		return sResult;
-
-	}
-
-	std::vector<int> neighbors = network->getAdjacency().at(sourceNodeId);
-
-	for (auto id : neighbors)
-	{
-		if (id != sourceNodeId)
-		{
-			Node* neighbor = network->getNodeById(id);
-			auto nResult = randomSearch(
-				network,
-				sourceNode->getId(),
-				requestedId,
-				TTL
-			);
-
-			sResult.visitedNodes.insert(
-				sResult.visitedNodes.end(),
-				nResult.visitedNodes.begin(),
-				nResult.visitedNodes.end()
-			);
-
-			if (nResult.success)
-			{
-
-				sResult.success = true;
-				sResult.foundNode = nResult.foundNode;
-				sResult.remaningTTL = nResult.remaningTTL;
-
-				sResult.path.insert(
-					sResult.path.end(),
-					nResult.path.begin(),
-					nResult.path.end()
-				);
-
-				return sResult;
-			}
-
-		}
-	}
-
-	return sResult;
-}
-
-SearchResult RandomSearch::randomSearch(
-	P2PNetwork* network,
-	int sourceNodeId,
-	std::string requestedId,
-	int TTL
+    P2PNetwork& network,
+    int sourceNodeId,
+    const std::string& requestedId,
+    int ttl
 )
 {
-	SearchResult sResult;
+    SearchResult result;
+    result.resourceId = requestedId;
+    result.remainingTTL = ttl;
 
-	sResult.resourceId = requestedId;
+    Node* sourceNode = network.getNodeById(sourceNodeId);
 
-	sResult.path = std::vector<int>{ sourceNodeId };
-	sResult.visitedNodes = std::vector<int>{ sourceNodeId };
+    if (sourceNode == nullptr)
+    {
+        return result;
+    }
 
-	sResult.remaningTTL = TTL;
+    std::random_device randomDevice;
+    std::mt19937 generator(randomDevice());
 
-	if (TTL == 0)
-	{
-		sResult.success = false;
-		return sResult;
-	}
+    std::set<int> involvedNodes;
 
-	Node* sourceNode = network->getNodeById(sourceNodeId);
+    int currentNodeId = sourceNodeId;
+    int currentTTL = ttl;
 
-	Result result = sourceNode->getResource(requestedId);
+    result.path.push_back(currentNodeId);
+    result.visitedNodes.push_back(currentNodeId);
+    involvedNodes.insert(currentNodeId);
 
-	if (result.success)
-	{
-		sResult.success = true;
-		sResult.foundNode = sourceNodeId;
-		return sResult;
+    while (true)
+    {
+        Node* currentNode = network.getNodeById(currentNodeId);
 
-	}
+        if (currentNode == nullptr)
+        {
+            break;
+        }
 
-	std::vector<int> neighbors = network->getAdjacency().at(sourceNodeId);
+        if (currentNode->hasResource(requestedId))
+        {
+            result.success = true;
+            result.foundNode = currentNodeId;
+            result.remainingTTL = currentTTL;
+            break;
+        }
 
-	for (auto id : neighbors)
-	{
-		if (id != sourceNodeId)
-		{
-			Node* neighbor = network->getNodeById(id);
-			auto nResult = randomSearch(
-				network,
-				sourceNode->getId(),
-				requestedId,
-				TTL - 1
-			);
+        if (currentTTL <= 0)
+        {
+            break;
+        }
 
-			sResult.visitedNodes.insert(
-				sResult.visitedNodes.end(),
-				nResult.visitedNodes.begin(),
-				nResult.visitedNodes.end()
-			);
+        const auto& neighbors = network.getNeighbors(currentNodeId);
 
-			if (nResult.success)
-			{
+        if (neighbors.empty())
+        {
+            break;
+        }
 
-				sResult.success = true;
-				sResult.foundNode = nResult.foundNode;
-				sResult.remaningTTL = nResult.remaningTTL;
+        std::uniform_int_distribution<int> distribution(
+            0,
+            static_cast<int>(neighbors.size()) - 1
+        );
 
-				sResult.path.insert(
-					sResult.path.end(),
-					nResult.path.begin(),
-					nResult.path.end()
-				);
+        int nextNodeId = neighbors[distribution(generator)];
 
-				return sResult;
-			}
+        result.messageCount++;
+        currentTTL--;
 
-		}
-	}
+        currentNodeId = nextNodeId;
 
-	return sResult;
+        result.path.push_back(currentNodeId);
+        result.visitedNodes.push_back(currentNodeId);
+        involvedNodes.insert(currentNodeId);
+    }
+
+    result.involvedNodesCount = static_cast<int>(involvedNodes.size());
+    return result;
 }
