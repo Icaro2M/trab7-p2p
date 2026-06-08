@@ -1,5 +1,6 @@
 #include "Flooding.h"
 
+#include <algorithm>
 #include <queue>
 #include <set>
 

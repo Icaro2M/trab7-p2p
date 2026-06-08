@@ -17,12 +17,24 @@ P2PNetwork::P2PNetwork(
         this->adjacency.try_emplace(networkNode.node.getId());
     }
 
-    if (this->adjacency.empty())
+    if (this->edges.empty())
     {
-        for (const auto& edge : this->edges)
+        return;
+    }
+
+    for (const auto& edge : this->edges)
+    {
+        auto& neighborsA = this->adjacency[edge.nodeAId];
+        auto& neighborsB = this->adjacency[edge.nodeBId];
+
+        if (std::find(neighborsA.begin(), neighborsA.end(), edge.nodeBId) == neighborsA.end())
         {
-            this->adjacency[edge.nodeAId].push_back(edge.nodeBId);
-            this->adjacency[edge.nodeBId].push_back(edge.nodeAId);
+            neighborsA.push_back(edge.nodeBId);
+        }
+
+        if (std::find(neighborsB.begin(), neighborsB.end(), edge.nodeAId) == neighborsB.end())
+        {
+            neighborsB.push_back(edge.nodeAId);
         }
     }
 }
