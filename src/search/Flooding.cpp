@@ -36,6 +36,7 @@ SearchResult Flooding::search(
         result.foundNode = sourceNodeId;
         result.path.push_back(sourceNodeId);
         result.involvedNodesCount = 1;
+        result.remainingTTL = ttl;
         return result;
     }
 
@@ -71,21 +72,25 @@ SearchResult Flooding::search(
                 continue;
             }
 
+            int nextTTL = currentTTL - 1;
+
             if (neighbor->hasResource(requestedId))
             {
                 result.success = true;
                 result.foundNode = neighborId;
-                result.remainingTTL = currentTTL - 1;
+                result.remainingTTL = nextTTL;
                 result.path = buildPath(sourceNodeId, neighborId, parent);
                 result.involvedNodesCount = static_cast<int>(visited.size());
                 return result;
             }
 
-            queue.push({ neighborId, currentTTL - 1 });
+            queue.push({ neighborId, nextTTL });
         }
     }
 
+    result.remainingTTL = 0;
     result.involvedNodesCount = static_cast<int>(visited.size());
+
     return result;
 }
 

@@ -52,6 +52,7 @@ SearchResult RandomSearch::search(
 
         if (currentTTL <= 0)
         {
+            result.remainingTTL = 0;
             break;
         }
 
@@ -59,6 +60,7 @@ SearchResult RandomSearch::search(
 
         if (neighbors.empty())
         {
+            result.remainingTTL = currentTTL;
             break;
         }
 
@@ -79,6 +81,8 @@ SearchResult RandomSearch::search(
         involvedNodes.insert(currentNodeId);
     }
 
+    result.remainingTTL = currentTTL;
     result.involvedNodesCount = static_cast<int>(involvedNodes.size());
+
     return result;
 }

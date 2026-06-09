@@ -19,7 +19,8 @@ add_executable (trab7-p2p "trab7-p2p.cpp"
 "src/search/RandomSearch.cpp"
 "src/network/P2pNetwork.cpp"
 "src/network/NetworkLoader.cpp"
-"src/network/NetworkValidator.cpp")
+"src/network/NetworkValidator.cpp"
+"src/search/SearchEngine.cpp")
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET trab7-p2p PROPERTY CXX_STANDARD 20)
