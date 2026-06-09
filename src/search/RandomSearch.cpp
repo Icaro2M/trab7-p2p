@@ -7,7 +7,8 @@ SearchResult RandomSearch::search(
     P2PNetwork& network,
     int sourceNodeId,
     const std::string& requestedId,
-    int ttl
+    int ttl,
+    bool useCache
 )
 {
     SearchResult result;
@@ -46,7 +47,26 @@ SearchResult RandomSearch::search(
         {
             result.success = true;
             result.foundNode = currentNodeId;
+            result.informedByNode = currentNodeId;
             result.remainingTTL = currentTTL;
+
+            updateCacheForNodes(network, result.path, requestedId, currentNodeId);
+
+            break;
+        }
+
+        if (useCache && currentNode->hasCachedResource(requestedId))
+        {
+            int ownerNodeId = currentNode->getCachedOwner(requestedId);
+
+            result.success = true;
+            result.cacheHit = true;
+            result.foundNode = ownerNodeId;
+            result.informedByNode = currentNodeId;
+            result.remainingTTL = currentTTL;
+
+            updateCacheForNodes(network, result.path, requestedId, ownerNodeId);
+
             break;
         }
 
@@ -85,4 +105,22 @@ SearchResult RandomSearch::search(
     result.involvedNodesCount = static_cast<int>(involvedNodes.size());
 
     return result;
+}
+
+void RandomSearch::updateCacheForNodes(
+    P2PNetwork& network,
+    const std::vector<int>& nodeIds,
+    const std::string& resourceId,
+    int ownerNodeId
+) const
+{
+    for (int nodeId : nodeIds)
+    {
+        Node* node = network.getNodeById(nodeId);
+
+        if (node != nullptr)
+        {
+            node->updateCache(resourceId, ownerNodeId);
+        }
+    }
 }

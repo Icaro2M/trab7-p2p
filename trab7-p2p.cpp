@@ -67,16 +67,43 @@ void printValidationErrors(const NetworkValidationResult& validationResult)
     std::cout << "\n";
 }
 
+std::string algorithmName(SearchAlgorithmType algorithm)
+{
+    switch (algorithm)
+    {
+    case SearchAlgorithmType::Flooding:
+        return "Flooding";
+
+    case SearchAlgorithmType::InformedFlooding:
+        return "Informed Flooding";
+
+    case SearchAlgorithmType::RandomWalk:
+        return "Random Walk";
+
+    case SearchAlgorithmType::InformedRandomWalk:
+        return "Informed Random Walk";
+    }
+
+    return "Desconhecido";
+}
+
 void printSearchResult(const std::string& title, const SearchResult& result)
 {
     std::cout << "=== " << title << " ===\n";
 
     std::cout << "Recurso buscado: " << result.resourceId << "\n";
     std::cout << "Encontrado: " << (result.success ? "sim" : "nao") << "\n";
+    std::cout << "Usou cache: " << (result.cacheHit ? "sim" : "nao") << "\n";
 
     if (result.success)
     {
-        std::cout << "Encontrado no no: n" << result.foundNode << "\n";
+        std::cout << "Recurso localizado no no: n" << result.foundNode << "\n";
+
+        if (result.cacheHit)
+        {
+            std::cout << "Informacao obtida pelo cache do no: n"
+                << result.informedByNode << "\n";
+        }
     }
 
     std::cout << "Mensagens trocadas: " << result.messageCount << "\n";
@@ -131,38 +158,26 @@ void runSearchTests(P2PNetwork& network)
     SearchEngine searchEngine;
 
     std::vector<SearchRequest> requests = {
+        // Primeiro executa uma busca normal para popular o cache.
         { 1, "r7", 4, SearchAlgorithmType::Flooding },
-        { 1, "r7", 4, SearchAlgorithmType::RandomWalk },
-        { 1, "r5", 2, SearchAlgorithmType::Flooding },
-        { 3, "r3", 3, SearchAlgorithmType::RandomWalk },
-        { 1, "r999", 4, SearchAlgorithmType::Flooding }
+
+        // Depois executa a versão informada para verificar uso do cache.
+        { 1, "r7", 4, SearchAlgorithmType::InformedFlooding },
+
+        // Random walk normal. Pode encontrar ou não, pois depende da aleatoriedade.
+        { 3, "r3", 4, SearchAlgorithmType::RandomWalk },
+
+        // Random walk informado. Pode se beneficiar do cache se algum nó do caminho souber.
+        { 3, "r3", 4, SearchAlgorithmType::InformedRandomWalk },
+
+        // Busca por recurso inexistente.
+        { 1, "r999", 4, SearchAlgorithmType::InformedFlooding }
     };
 
     for (const auto& request : requests)
     {
-        std::string algorithmName;
-
-        switch (request.algorithm)
-        {
-        case SearchAlgorithmType::Flooding:
-            algorithmName = "Flooding";
-            break;
-
-        case SearchAlgorithmType::InformedFlooding:
-            algorithmName = "Informed Flooding";
-            break;
-
-        case SearchAlgorithmType::RandomWalk:
-            algorithmName = "Random Walk";
-            break;
-
-        case SearchAlgorithmType::InformedRandomWalk:
-            algorithmName = "Informed Random Walk";
-            break;
-        }
-
         std::string title =
-            algorithmName +
+            algorithmName(request.algorithm) +
             " | origem: n" +
             std::to_string(request.sourceNodeId) +
             " | recurso: " +
@@ -178,8 +193,7 @@ void runSearchTests(P2PNetwork& network)
 
 int main()
 {
-    const std::string configPath =
-        "C:/Users/icaro/unifor/computacao_distribuida/trab7-p2p/configs/rede_valida.txt";
+    const std::string configPath = "C:/Users/icaro/unifor/computacao_distribuida/trab7-p2p/configs/rede_valida.txt";
 
     NetworkLoader loader;
     NetworkLoadResult loadResult = loader.loadFromFile(configPath);

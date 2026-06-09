@@ -15,7 +15,8 @@ SearchResult SearchEngine::execute(P2PNetwork& network, const SearchRequest& req
             network,
             request.sourceNodeId,
             request.resourceId,
-            request.ttl
+            request.ttl,
+            request.useCache()
         );
     }
 
@@ -27,7 +28,8 @@ SearchResult SearchEngine::execute(P2PNetwork& network, const SearchRequest& req
             network,
             request.sourceNodeId,
             request.resourceId,
-            request.ttl
+            request.ttl,
+            request.useCache()
         );
     }
 

@@ -12,7 +12,8 @@ public:
         P2PNetwork& network,
         int sourceNodeId,
         const std::string& requestedId,
-        int ttl
+        int ttl,
+        bool useCache
     ) override;
 
 private:
@@ -20,5 +21,12 @@ private:
         int sourceNodeId,
         int foundNodeId,
         const std::map<int, int>& parent
+    ) const;
+
+    void updateCacheForNodes(
+        P2PNetwork& network,
+        const std::vector<int>& nodeIds,
+        const std::string& resourceId,
+        int ownerNodeId
     ) const;
 };

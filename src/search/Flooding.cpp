@@ -8,7 +8,8 @@ SearchResult Flooding::search(
     P2PNetwork& network,
     int sourceNodeId,
     const std::string& requestedId,
-    int ttl
+    int ttl,
+    bool useCache
 )
 {
     SearchResult result;
@@ -34,9 +35,28 @@ SearchResult Flooding::search(
     {
         result.success = true;
         result.foundNode = sourceNodeId;
+        result.informedByNode = sourceNodeId;
         result.path.push_back(sourceNodeId);
         result.involvedNodesCount = 1;
         result.remainingTTL = ttl;
+
+        updateCacheForNodes(network, result.path, requestedId, sourceNodeId);
+
+        return result;
+    }
+
+    if (useCache && sourceNode->hasCachedResource(requestedId))
+    {
+        int ownerNodeId = sourceNode->getCachedOwner(requestedId);
+
+        result.success = true;
+        result.cacheHit = true;
+        result.foundNode = ownerNodeId;
+        result.informedByNode = sourceNodeId;
+        result.path.push_back(sourceNodeId);
+        result.involvedNodesCount = 1;
+        result.remainingTTL = ttl;
+
         return result;
     }
 
@@ -78,9 +98,30 @@ SearchResult Flooding::search(
             {
                 result.success = true;
                 result.foundNode = neighborId;
+                result.informedByNode = neighborId;
                 result.remainingTTL = nextTTL;
                 result.path = buildPath(sourceNodeId, neighborId, parent);
                 result.involvedNodesCount = static_cast<int>(visited.size());
+
+                updateCacheForNodes(network, result.path, requestedId, neighborId);
+
+                return result;
+            }
+
+            if (useCache && neighbor->hasCachedResource(requestedId))
+            {
+                int ownerNodeId = neighbor->getCachedOwner(requestedId);
+
+                result.success = true;
+                result.cacheHit = true;
+                result.foundNode = ownerNodeId;
+                result.informedByNode = neighborId;
+                result.remainingTTL = nextTTL;
+                result.path = buildPath(sourceNodeId, neighborId, parent);
+                result.involvedNodesCount = static_cast<int>(visited.size());
+
+                updateCacheForNodes(network, result.path, requestedId, ownerNodeId);
+
                 return result;
             }
 
@@ -120,4 +161,22 @@ std::vector<int> Flooding::buildPath(
 
     std::reverse(path.begin(), path.end());
     return path;
+}
+
+void Flooding::updateCacheForNodes(
+    P2PNetwork& network,
+    const std::vector<int>& nodeIds,
+    const std::string& resourceId,
+    int ownerNodeId
+) const
+{
+    for (int nodeId : nodeIds)
+    {
+        Node* node = network.getNodeById(nodeId);
+
+        if (node != nullptr)
+        {
+            node->updateCache(resourceId, ownerNodeId);
+        }
+    }
 }

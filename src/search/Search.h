@@ -14,6 +14,7 @@ public:
         P2PNetwork& network,
         int sourceNodeId,
         const std::string& requestedId,
-        int ttl
+        int ttl,
+        bool useCache
     ) = 0;
 };
