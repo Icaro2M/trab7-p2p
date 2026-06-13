@@ -1,7 +1,10 @@
 #include "RandomSearch.h"
 
+#include <algorithm>
+#include <functional>
 #include <random>
 #include <set>
+#include <tuple>
 
 SearchResult RandomSearch::search(
     P2PNetwork& network,
@@ -19,6 +22,18 @@ SearchResult RandomSearch::search(
 
     if (sourceNode == nullptr)
     {
+        result.steps.push_back({
+            SearchStepType::SearchFinished,
+            -1,
+            sourceNodeId,
+            ttl,
+            ttl,
+            false,
+            false,
+            false,
+            0
+            });
+
         return result;
     }
 
@@ -26,21 +41,34 @@ SearchResult RandomSearch::search(
     std::mt19937 generator(randomDevice());
 
     std::set<int> involvedNodes;
+    std::set<std::tuple<int, int, int>> attemptedSends;
+    std::vector<int> currentPath;
+    int wave = 0;
 
-    int currentNodeId = sourceNodeId;
-    int currentTTL = ttl;
+    currentPath.push_back(sourceNodeId);
+    result.path = currentPath;
+    result.visitedNodes.push_back(sourceNodeId);
+    involvedNodes.insert(sourceNodeId);
 
-    result.path.push_back(currentNodeId);
-    result.visitedNodes.push_back(currentNodeId);
-    involvedNodes.insert(currentNodeId);
+    result.steps.push_back({
+        SearchStepType::VisitNode,
+        -1,
+        sourceNodeId,
+        ttl,
+        ttl,
+        false,
+        false,
+        false,
+        wave
+        });
 
-    while (true)
+    std::function<bool(int, int)> walk = [&](int currentNodeId, int currentTTL)
     {
         Node* currentNode = network.getNodeById(currentNodeId);
 
         if (currentNode == nullptr)
         {
-            break;
+            return false;
         }
 
         if (currentNode->hasResource(requestedId))
@@ -49,10 +77,21 @@ SearchResult RandomSearch::search(
             result.foundNode = currentNodeId;
             result.informedByNode = currentNodeId;
             result.remainingTTL = currentTTL;
+            result.path = currentPath;
 
-            updateCacheForNodes(network, result.path, requestedId, currentNodeId);
+            result.steps.push_back({
+                SearchStepType::ResourceFound,
+                currentNodeId,
+                currentNodeId,
+                currentTTL,
+                currentTTL,
+                true,
+                false,
+                false,
+                wave
+                });
 
-            break;
+            return true;
         }
 
         if (useCache && currentNode->hasCachedResource(requestedId))
@@ -64,45 +103,105 @@ SearchResult RandomSearch::search(
             result.foundNode = ownerNodeId;
             result.informedByNode = currentNodeId;
             result.remainingTTL = currentTTL;
+            result.path = currentPath;
 
-            updateCacheForNodes(network, result.path, requestedId, ownerNodeId);
+            result.steps.push_back({
+                SearchStepType::CacheHit,
+                currentNodeId,
+                currentNodeId,
+                currentTTL,
+                currentTTL,
+                false,
+                true,
+                false,
+                wave
+                });
 
-            break;
+            return true;
         }
 
         if (currentTTL <= 0)
         {
             result.remainingTTL = 0;
-            break;
+            return false;
         }
 
-        const auto& neighbors = network.getNeighbors(currentNodeId);
+        std::vector<int> neighbors = network.getNeighbors(currentNodeId);
+        std::shuffle(neighbors.begin(), neighbors.end(), generator);
 
-        if (neighbors.empty())
+        for (int nextNodeId : neighbors)
         {
-            result.remainingTTL = currentTTL;
-            break;
+            int nextTTL = currentTTL - 1;
+            auto sendKey = std::make_tuple(currentNodeId, currentTTL, nextNodeId);
+
+            if (attemptedSends.find(sendKey) != attemptedSends.end())
+            {
+                continue;
+            }
+
+            attemptedSends.insert(sendKey);
+            ++wave;
+            result.messageCount++;
+
+            result.steps.push_back({
+                SearchStepType::SendMessage,
+                currentNodeId,
+                nextNodeId,
+                currentTTL,
+                nextTTL,
+                false,
+                false,
+                involvedNodes.find(nextNodeId) != involvedNodes.end(),
+                wave
+                });
+
+            currentPath.push_back(nextNodeId);
+            result.visitedNodes.push_back(nextNodeId);
+            involvedNodes.insert(nextNodeId);
+
+            result.steps.push_back({
+                SearchStepType::VisitNode,
+                currentNodeId,
+                nextNodeId,
+                currentTTL,
+                nextTTL,
+                false,
+                false,
+                false,
+                wave
+                });
+
+            if (walk(nextNodeId, nextTTL))
+            {
+                return true;
+            }
+
+            currentPath.pop_back();
         }
 
-        std::uniform_int_distribution<int> distribution(
-            0,
-            static_cast<int>(neighbors.size()) - 1
-        );
+        return false;
+    };
 
-        int nextNodeId = neighbors[distribution(generator)];
+    walk(sourceNodeId, ttl);
 
-        result.messageCount++;
-        currentTTL--;
+    result.involvedNodesCount = static_cast<int>(involvedNodes.size());
 
-        currentNodeId = nextNodeId;
-
-        result.path.push_back(currentNodeId);
-        result.visitedNodes.push_back(currentNodeId);
-        involvedNodes.insert(currentNodeId);
+    if (result.success)
+    {
+        updateCacheForNodes(network, result.path, requestedId, result.foundNode);
     }
 
-    result.remainingTTL = currentTTL;
-    result.involvedNodesCount = static_cast<int>(involvedNodes.size());
+    result.steps.push_back({
+        SearchStepType::SearchFinished,
+        -1,
+        result.informedByNode,
+        result.remainingTTL,
+        result.remainingTTL,
+        result.success,
+        result.cacheHit,
+        false,
+        wave + 1
+        });
 
     return result;
 }

@@ -16,6 +16,11 @@ const std::vector<Resource>& Node::getResources() const
     return resources;
 }
 
+const std::map<std::string, int>& Node::getCache() const
+{
+    return cache;
+}
+
 Result Node::getResource(const std::string& resourceId) const
 {
     Result result;

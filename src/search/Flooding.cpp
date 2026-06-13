@@ -1,8 +1,21 @@
 #include "Flooding.h"
 
 #include <algorithm>
-#include <queue>
+#include <map>
 #include <set>
+#include <utility>
+#include <vector>
+
+namespace
+{
+    struct Delivery
+    {
+        int fromNodeId = -1;
+        int toNodeId = -1;
+        int ttlBefore = 0;
+        int ttlAfter = 0;
+    };
+}
 
 SearchResult Flooding::search(
     P2PNetwork& network,
@@ -20,16 +33,41 @@ SearchResult Flooding::search(
 
     if (sourceNode == nullptr)
     {
+        result.steps.push_back({
+            SearchStepType::SearchFinished,
+            -1,
+            sourceNodeId,
+            ttl,
+            ttl,
+            false,
+            false,
+            false,
+            0
+            });
+
         return result;
     }
 
-    std::queue<std::pair<int, int>> queue;
     std::set<int> visited;
     std::map<int, int> parent;
+    std::vector<std::pair<int, int>> frontier;
 
-    queue.push({ sourceNodeId, ttl });
+    frontier.push_back({ sourceNodeId, ttl });
     visited.insert(sourceNodeId);
+
     result.visitedNodes.push_back(sourceNodeId);
+
+    result.steps.push_back({
+        SearchStepType::VisitNode,
+        -1,
+        sourceNodeId,
+        ttl,
+        ttl,
+        false,
+        false,
+        false,
+        0
+        });
 
     if (sourceNode->hasResource(requestedId))
     {
@@ -39,6 +77,30 @@ SearchResult Flooding::search(
         result.path.push_back(sourceNodeId);
         result.involvedNodesCount = 1;
         result.remainingTTL = ttl;
+
+        result.steps.push_back({
+            SearchStepType::ResourceFound,
+            sourceNodeId,
+            sourceNodeId,
+            ttl,
+            ttl,
+            true,
+            false,
+            false,
+            0
+            });
+
+        result.steps.push_back({
+            SearchStepType::SearchFinished,
+            -1,
+            sourceNodeId,
+            ttl,
+            ttl,
+            true,
+            false,
+            false,
+            1
+            });
 
         updateCacheForNodes(network, result.path, requestedId, sourceNodeId);
 
@@ -57,80 +119,192 @@ SearchResult Flooding::search(
         result.involvedNodesCount = 1;
         result.remainingTTL = ttl;
 
+        result.steps.push_back({
+            SearchStepType::CacheHit,
+            sourceNodeId,
+            sourceNodeId,
+            ttl,
+            ttl,
+            false,
+            true,
+            false,
+            0
+            });
+
+        result.steps.push_back({
+            SearchStepType::SearchFinished,
+            -1,
+            sourceNodeId,
+            ttl,
+            ttl,
+            true,
+            true,
+            false,
+            1
+            });
+
         return result;
     }
 
-    while (!queue.empty())
+    int wave = 1;
+
+    while (!frontier.empty())
     {
-        auto [currentNodeId, currentTTL] = queue.front();
-        queue.pop();
+        std::set<int> receivedThisWave;
+        std::vector<Delivery> deliveries;
+        std::vector<std::pair<int, int>> nextFrontier;
 
-        if (currentTTL <= 0)
+        for (const auto& item : frontier)
         {
-            continue;
-        }
+            const auto [currentNodeId, currentTTL] = item;
 
-        const auto& neighbors = network.getNeighbors(currentNodeId);
-
-        for (int neighborId : neighbors)
-        {
-            result.messageCount++;
-
-            if (visited.find(neighborId) != visited.end())
+            if (currentTTL <= 0)
             {
                 continue;
             }
 
-            visited.insert(neighborId);
-            parent[neighborId] = currentNodeId;
-            result.visitedNodes.push_back(neighborId);
+            const auto& neighbors = network.getNeighbors(currentNodeId);
 
-            Node* neighbor = network.getNodeById(neighborId);
+            for (int neighborId : neighbors)
+            {
+                result.messageCount++;
+
+                int nextTTL = currentTTL - 1;
+                bool wasAlreadyVisited = visited.find(neighborId) != visited.end() ||
+                    receivedThisWave.find(neighborId) != receivedThisWave.end();
+
+                result.steps.push_back({
+                    SearchStepType::SendMessage,
+                    currentNodeId,
+                    neighborId,
+                    currentTTL,
+                    nextTTL,
+                    false,
+                    false,
+                    wasAlreadyVisited,
+                    wave
+                    });
+
+                if (wasAlreadyVisited)
+                {
+                    continue;
+                }
+
+                receivedThisWave.insert(neighborId);
+                deliveries.push_back({ currentNodeId, neighborId, currentTTL, nextTTL });
+            }
+        }
+
+        for (const Delivery& delivery : deliveries)
+        {
+            visited.insert(delivery.toNodeId);
+            parent[delivery.toNodeId] = delivery.fromNodeId;
+
+            result.visitedNodes.push_back(delivery.toNodeId);
+
+            result.steps.push_back({
+                SearchStepType::VisitNode,
+                delivery.fromNodeId,
+                delivery.toNodeId,
+                delivery.ttlBefore,
+                delivery.ttlAfter,
+                false,
+                false,
+                false,
+                wave
+                });
+
+            Node* neighbor = network.getNodeById(delivery.toNodeId);
 
             if (neighbor == nullptr)
             {
                 continue;
             }
 
-            int nextTTL = currentTTL - 1;
-
             if (neighbor->hasResource(requestedId))
             {
-                result.success = true;
-                result.foundNode = neighborId;
-                result.informedByNode = neighborId;
-                result.remainingTTL = nextTTL;
-                result.path = buildPath(sourceNodeId, neighborId, parent);
-                result.involvedNodesCount = static_cast<int>(visited.size());
+                result.steps.push_back({
+                    SearchStepType::ResourceFound,
+                    delivery.fromNodeId,
+                    delivery.toNodeId,
+                    delivery.ttlBefore,
+                    delivery.ttlAfter,
+                    true,
+                    false,
+                    false,
+                    wave
+                    });
 
-                updateCacheForNodes(network, result.path, requestedId, neighborId);
+                if (!result.success)
+                {
+                    result.success = true;
+                    result.foundNode = delivery.toNodeId;
+                    result.informedByNode = delivery.toNodeId;
+                    result.remainingTTL = delivery.ttlAfter;
+                    result.path = buildPath(sourceNodeId, delivery.toNodeId, parent);
+                }
 
-                return result;
+                continue;
             }
 
             if (useCache && neighbor->hasCachedResource(requestedId))
             {
                 int ownerNodeId = neighbor->getCachedOwner(requestedId);
 
-                result.success = true;
-                result.cacheHit = true;
-                result.foundNode = ownerNodeId;
-                result.informedByNode = neighborId;
-                result.remainingTTL = nextTTL;
-                result.path = buildPath(sourceNodeId, neighborId, parent);
-                result.involvedNodesCount = static_cast<int>(visited.size());
+                result.steps.push_back({
+                    SearchStepType::CacheHit,
+                    delivery.fromNodeId,
+                    delivery.toNodeId,
+                    delivery.ttlBefore,
+                    delivery.ttlAfter,
+                    false,
+                    true,
+                    false,
+                    wave
+                    });
 
-                updateCacheForNodes(network, result.path, requestedId, ownerNodeId);
+                if (!result.success)
+                {
+                    result.success = true;
+                    result.cacheHit = true;
+                    result.foundNode = ownerNodeId;
+                    result.informedByNode = delivery.toNodeId;
+                    result.remainingTTL = delivery.ttlAfter;
+                    result.path = buildPath(sourceNodeId, delivery.toNodeId, parent);
+                }
 
-                return result;
+                continue;
             }
 
-            queue.push({ neighborId, nextTTL });
+            nextFrontier.push_back({ delivery.toNodeId, delivery.ttlAfter });
         }
+
+        frontier = std::move(nextFrontier);
+        ++wave;
     }
 
-    result.remainingTTL = 0;
     result.involvedNodesCount = static_cast<int>(visited.size());
+
+    if (result.success)
+    {
+        updateCacheForNodes(network, result.path, requestedId, result.foundNode);
+    }
+    else
+    {
+        result.remainingTTL = 0;
+    }
+
+    result.steps.push_back({
+        SearchStepType::SearchFinished,
+        -1,
+        result.informedByNode,
+        result.remainingTTL,
+        result.remainingTTL,
+        result.success,
+        result.cacheHit,
+        false,
+        wave
+        });
 
     return result;
 }
@@ -142,8 +316,8 @@ std::vector<int> Flooding::buildPath(
 ) const
 {
     std::vector<int> path;
-    int current = foundNodeId;
 
+    int current = foundNodeId;
     path.push_back(current);
 
     while (current != sourceNodeId)
@@ -160,6 +334,7 @@ std::vector<int> Flooding::buildPath(
     }
 
     std::reverse(path.begin(), path.end());
+
     return path;
 }
 

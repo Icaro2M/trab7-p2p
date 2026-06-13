@@ -19,6 +19,7 @@ public:
 
     int getId() const;
     const std::vector<Resource>& getResources() const;
+    const std::map<std::string, int>& getCache() const;
 
     Result getResource(const std::string& resourceId) const;
     bool hasResource(const std::string& resourceId) const;
