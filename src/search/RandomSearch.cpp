@@ -4,7 +4,6 @@
 #include <functional>
 #include <random>
 #include <set>
-#include <tuple>
 
 SearchResult RandomSearch::search(
     P2PNetwork& network,
@@ -41,7 +40,7 @@ SearchResult RandomSearch::search(
     std::mt19937 generator(randomDevice());
 
     std::set<int> involvedNodes;
-    std::set<std::tuple<int, int, int>> attemptedSends;
+    std::set<int> visited;
     std::vector<int> currentPath;
     int wave = 0;
 
@@ -49,6 +48,7 @@ SearchResult RandomSearch::search(
     result.path = currentPath;
     result.visitedNodes.push_back(sourceNodeId);
     involvedNodes.insert(sourceNodeId);
+    visited.insert(sourceNodeId);
 
     result.steps.push_back({
         SearchStepType::VisitNode,
@@ -131,15 +131,12 @@ SearchResult RandomSearch::search(
 
         for (int nextNodeId : neighbors)
         {
-            int nextTTL = currentTTL - 1;
-            auto sendKey = std::make_tuple(currentNodeId, currentTTL, nextNodeId);
-
-            if (attemptedSends.find(sendKey) != attemptedSends.end())
+            if (visited.find(nextNodeId) != visited.end())
             {
                 continue;
             }
 
-            attemptedSends.insert(sendKey);
+            int nextTTL = currentTTL - 1;
             ++wave;
             result.messageCount++;
 
@@ -158,6 +155,7 @@ SearchResult RandomSearch::search(
             currentPath.push_back(nextNodeId);
             result.visitedNodes.push_back(nextNodeId);
             involvedNodes.insert(nextNodeId);
+            visited.insert(nextNodeId);
 
             result.steps.push_back({
                 SearchStepType::VisitNode,
