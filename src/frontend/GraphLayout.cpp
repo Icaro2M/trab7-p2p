@@ -1,6 +1,7 @@
 #include "GraphLayout.h"
 
-#include <cmath>
+#include <algorithm>
+#include <limits>
 
 void GraphLayout::update(const P2PNetwork& network, const ImVec2& origin, const ImVec2& size)
 {
@@ -12,22 +13,50 @@ void GraphLayout::update(const P2PNetwork& network, const ImVec2& origin, const 
         return;
     }
 
-    const float pi = 3.14159265358979323846f;
     const ImVec2 center(origin.x + size.x * 0.5f, origin.y + size.y * 0.5f);
-    const float radius = (size.x < size.y ? size.x : size.y) * 0.38f;
-    const int count = static_cast<int>(networkNodes.size());
 
     nodes.reserve(networkNodes.size());
 
-    for (int i = 0; i < count; ++i)
+    if (networkNodes.size() == 1)
     {
-        const float angle = -pi * 0.5f + (2.0f * pi * static_cast<float>(i) / static_cast<float>(count));
-
         VisualNode visualNode;
-        visualNode.nodeId = networkNodes[i].node.getId();
+        visualNode.nodeId = networkNodes.front().node.getId();
+        visualNode.position = center;
+        nodes.push_back(visualNode);
+        return;
+    }
+
+    float minX = std::numeric_limits<float>::max();
+    float minY = std::numeric_limits<float>::max();
+    float maxX = std::numeric_limits<float>::lowest();
+    float maxY = std::numeric_limits<float>::lowest();
+
+    for (const auto& networkNode : networkNodes)
+    {
+        minX = std::min(minX, networkNode.position.x);
+        minY = std::min(minY, networkNode.position.y);
+        maxX = std::max(maxX, networkNode.position.x);
+        maxY = std::max(maxY, networkNode.position.y);
+    }
+
+    const float padding = 54.0f;
+    const float layoutWidth = std::max(1.0f, maxX - minX);
+    const float layoutHeight = std::max(1.0f, maxY - minY);
+    const float usableWidth = std::max(1.0f, size.x - padding * 2.0f);
+    const float usableHeight = std::max(1.0f, size.y - padding * 2.0f);
+    const float scale = std::min(usableWidth / layoutWidth, usableHeight / layoutHeight);
+    const float scaledWidth = layoutWidth * scale;
+    const float scaledHeight = layoutHeight * scale;
+    const float offsetX = origin.x + (size.x - scaledWidth) * 0.5f;
+    const float offsetY = origin.y + (size.y - scaledHeight) * 0.5f;
+
+    for (const auto& networkNode : networkNodes)
+    {
+        VisualNode visualNode;
+        visualNode.nodeId = networkNode.node.getId();
         visualNode.position = ImVec2(
-            center.x + std::cos(angle) * radius,
-            center.y + std::sin(angle) * radius
+            offsetX + (networkNode.position.x - minX) * scale,
+            offsetY + (networkNode.position.y - minY) * scale
         );
 
         nodes.push_back(visualNode);

@@ -16,5 +16,5 @@ private:
     static int parseNodeId(const std::string& value);
     static std::vector<std::string> splitByComma(const std::string& value);
 
-    static Position generatePosition(int nodeIndex, int totalNodes);
+    static std::vector<Position> generateClusteredPositions(int totalNodes, const std::vector<Edge>& edges);
 };

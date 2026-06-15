@@ -2,14 +2,25 @@
 
 #include "../model/Resource.h"
 
+#include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <queue>
+#include <random>
 #include <sstream>
 #include <vector>
 
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
+namespace
+{
+constexpr float pi = 3.14159265358979323846f;
+
+float distanceBetween(const Position& a, const Position& b)
+{
+    const float dx = b.x - a.x;
+    const float dy = b.y - a.y;
+    return std::sqrt(dx * dx + dy * dy);
+}
+}
 
 NetworkLoadResult NetworkLoader::loadFromFile(const std::string& filePath) const
 {
@@ -169,6 +180,8 @@ NetworkLoadResult NetworkLoader::loadFromFile(const std::string& filePath) const
 
     P2PNetwork network;
 
+    std::vector<Position> positions = generateClusteredPositions(numNodes, edges);
+
     for (int i = 1; i <= numNodes; ++i)
     {
         std::vector<Resource> nodeResources;
@@ -181,7 +194,7 @@ NetworkLoadResult NetworkLoader::loadFromFile(const std::string& filePath) const
         }
 
         Node node(i, nodeResources);
-        Position position = generatePosition(i - 1, numNodes);
+        Position position = positions[static_cast<std::size_t>(i - 1)];
 
         network.addNetworkNode(NetworkNode(node, position));
     }
@@ -261,22 +274,179 @@ std::vector<std::string> NetworkLoader::splitByComma(const std::string& value)
     return parts;
 }
 
-Position NetworkLoader::generatePosition(int nodeIndex, int totalNodes)
+std::vector<Position> NetworkLoader::generateClusteredPositions(int totalNodes, const std::vector<Edge>& edges)
 {
-    Position position;
+    std::vector<Position> positions(static_cast<std::size_t>(std::max(totalNodes, 0)));
 
     if (totalNodes <= 0)
     {
-        return position;
+        return positions;
     }
 
-    constexpr float radius = 250.0f;
+    std::vector<std::vector<int>> adjacency(static_cast<std::size_t>(totalNodes));
 
-    double angle = (2.0 * M_PI * static_cast<double>(nodeIndex)) / static_cast<double>(totalNodes);
+    for (const auto& edge : edges)
+    {
+        if (edge.nodeAId < 1 || edge.nodeAId > totalNodes || edge.nodeBId < 1 || edge.nodeBId > totalNodes)
+        {
+            continue;
+        }
 
-    position.x = static_cast<float>(std::cos(angle) * radius);
-    position.y = static_cast<float>(std::sin(angle) * radius);
-    position.z = 0.0f;
+        int a = edge.nodeAId - 1;
+        int b = edge.nodeBId - 1;
 
-    return position;
+        adjacency[static_cast<std::size_t>(a)].push_back(b);
+        adjacency[static_cast<std::size_t>(b)].push_back(a);
+    }
+
+    const int clusterCount = std::max(1, std::min(6, static_cast<int>(std::ceil(std::sqrt(static_cast<float>(totalNodes)) / 1.6f))));
+    const int targetClusterSize = std::max(1, static_cast<int>(std::ceil(static_cast<float>(totalNodes) / static_cast<float>(clusterCount))));
+
+    std::vector<int> nodeCluster(static_cast<std::size_t>(totalNodes), -1);
+    int currentCluster = 0;
+
+    for (int start = 0; start < totalNodes; ++start)
+    {
+        if (nodeCluster[static_cast<std::size_t>(start)] != -1)
+        {
+            continue;
+        }
+
+        std::queue<int> pending;
+        pending.push(start);
+
+        int assignedInCluster = 0;
+
+        while (!pending.empty())
+        {
+            int nodeIndex = pending.front();
+            pending.pop();
+
+            if (nodeCluster[static_cast<std::size_t>(nodeIndex)] != -1)
+            {
+                continue;
+            }
+
+            nodeCluster[static_cast<std::size_t>(nodeIndex)] = currentCluster;
+            ++assignedInCluster;
+
+            for (int neighborIndex : adjacency[static_cast<std::size_t>(nodeIndex)])
+            {
+                if (nodeCluster[static_cast<std::size_t>(neighborIndex)] == -1)
+                {
+                    pending.push(neighborIndex);
+                }
+            }
+
+            if (assignedInCluster >= targetClusterSize && currentCluster < clusterCount - 1)
+            {
+                break;
+            }
+        }
+
+        if (assignedInCluster >= targetClusterSize && currentCluster < clusterCount - 1)
+        {
+            ++currentCluster;
+        }
+    }
+
+    const int actualClusterCount = std::max(1, currentCluster + 1);
+    std::mt19937 random(static_cast<unsigned int>(totalNodes * 7919 + edges.size() * 104729));
+    std::uniform_real_distribution<float> angleDistribution(0.0f, 2.0f * pi);
+    std::uniform_real_distribution<float> radiusDistribution(35.0f, 115.0f);
+    std::uniform_real_distribution<float> jitterDistribution(-28.0f, 28.0f);
+
+    std::vector<Position> clusterCenters(static_cast<std::size_t>(actualClusterCount));
+    const float clusterRingRadius = 220.0f + static_cast<float>(actualClusterCount) * 35.0f;
+
+    for (int clusterIndex = 0; clusterIndex < actualClusterCount; ++clusterIndex)
+    {
+        const float angle = -pi * 0.5f + 2.0f * pi * static_cast<float>(clusterIndex) / static_cast<float>(actualClusterCount);
+
+        clusterCenters[static_cast<std::size_t>(clusterIndex)].x = std::cos(angle) * clusterRingRadius + jitterDistribution(random);
+        clusterCenters[static_cast<std::size_t>(clusterIndex)].y = std::sin(angle) * clusterRingRadius + jitterDistribution(random);
+    }
+
+    for (int nodeIndex = 0; nodeIndex < totalNodes; ++nodeIndex)
+    {
+        const int clusterIndex = std::max(0, std::min(actualClusterCount - 1, nodeCluster[static_cast<std::size_t>(nodeIndex)]));
+        const float angle = angleDistribution(random);
+        const float radius = radiusDistribution(random);
+        const Position& center = clusterCenters[static_cast<std::size_t>(clusterIndex)];
+
+        positions[static_cast<std::size_t>(nodeIndex)].x = center.x + std::cos(angle) * radius;
+        positions[static_cast<std::size_t>(nodeIndex)].y = center.y + std::sin(angle) * radius;
+    }
+
+    for (int iteration = 0; iteration < 140; ++iteration)
+    {
+        std::vector<Position> displacement(positions.size());
+        const float cooling = 1.0f - static_cast<float>(iteration) / 140.0f;
+        const float maxStep = 9.0f * cooling + 1.0f;
+
+        for (int a = 0; a < totalNodes; ++a)
+        {
+            for (int b = a + 1; b < totalNodes; ++b)
+            {
+                float dx = positions[static_cast<std::size_t>(a)].x - positions[static_cast<std::size_t>(b)].x;
+                float dy = positions[static_cast<std::size_t>(a)].y - positions[static_cast<std::size_t>(b)].y;
+                float distance = std::sqrt(dx * dx + dy * dy) + 0.01f;
+                float force = 3600.0f / (distance * distance);
+
+                dx /= distance;
+                dy /= distance;
+
+                displacement[static_cast<std::size_t>(a)].x += dx * force;
+                displacement[static_cast<std::size_t>(a)].y += dy * force;
+                displacement[static_cast<std::size_t>(b)].x -= dx * force;
+                displacement[static_cast<std::size_t>(b)].y -= dy * force;
+            }
+        }
+
+        for (const auto& edge : edges)
+        {
+            int a = edge.nodeAId - 1;
+            int b = edge.nodeBId - 1;
+
+            if (a < 0 || a >= totalNodes || b < 0 || b >= totalNodes)
+            {
+                continue;
+            }
+
+            float dx = positions[static_cast<std::size_t>(b)].x - positions[static_cast<std::size_t>(a)].x;
+            float dy = positions[static_cast<std::size_t>(b)].y - positions[static_cast<std::size_t>(a)].y;
+            float distance = std::sqrt(dx * dx + dy * dy) + 0.01f;
+            float force = (distance - 105.0f) * 0.045f;
+
+            dx /= distance;
+            dy /= distance;
+
+            displacement[static_cast<std::size_t>(a)].x += dx * force;
+            displacement[static_cast<std::size_t>(a)].y += dy * force;
+            displacement[static_cast<std::size_t>(b)].x -= dx * force;
+            displacement[static_cast<std::size_t>(b)].y -= dy * force;
+        }
+
+        for (int nodeIndex = 0; nodeIndex < totalNodes; ++nodeIndex)
+        {
+            const int clusterIndex = std::max(0, std::min(actualClusterCount - 1, nodeCluster[static_cast<std::size_t>(nodeIndex)]));
+            const Position& center = clusterCenters[static_cast<std::size_t>(clusterIndex)];
+
+            displacement[static_cast<std::size_t>(nodeIndex)].x += (center.x - positions[static_cast<std::size_t>(nodeIndex)].x) * 0.003f;
+            displacement[static_cast<std::size_t>(nodeIndex)].y += (center.y - positions[static_cast<std::size_t>(nodeIndex)].y) * 0.003f;
+
+            float step = distanceBetween(Position{}, displacement[static_cast<std::size_t>(nodeIndex)]);
+
+            if (step > maxStep)
+            {
+                displacement[static_cast<std::size_t>(nodeIndex)].x *= maxStep / step;
+                displacement[static_cast<std::size_t>(nodeIndex)].y *= maxStep / step;
+            }
+
+            positions[static_cast<std::size_t>(nodeIndex)].x += displacement[static_cast<std::size_t>(nodeIndex)].x;
+            positions[static_cast<std::size_t>(nodeIndex)].y += displacement[static_cast<std::size_t>(nodeIndex)].y;
+        }
+    }
+
+    return positions;
 }
