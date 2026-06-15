@@ -36,6 +36,7 @@ public:
 
     char* getPathBuffer();
     std::size_t getPathBufferSize() const;
+    void setPath(const std::string& path);
     const std::string& getCurrentPath() const;
     const std::string& getStatusMessage() const;
 

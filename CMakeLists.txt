@@ -57,6 +57,7 @@ target_include_directories(trab7-p2p PRIVATE
 target_link_libraries(trab7-p2p PRIVATE
     glfw
     opengl32
+    comdlg32
 )
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)

@@ -9,15 +9,14 @@
 
 #include <GLFW/glfw3.h>
 
-#include <cstring>
+#include <cstdio>
 #include <exception>
 #include <set>
 
 App::App()
 {
     const char* defaultPath = "C:/Users/icaro/unifor/computacao_distribuida/trab7-p2p/configs/rede_valida.txt";
-    std::strncpy(pathBuffer.data(), defaultPath, pathBuffer.size() - 1);
-    currentPath = defaultPath;
+    setPath(defaultPath);
 }
 
 int App::run()
@@ -254,6 +253,12 @@ char* App::getPathBuffer()
 std::size_t App::getPathBufferSize() const
 {
     return pathBuffer.size();
+}
+
+void App::setPath(const std::string& path)
+{
+    std::snprintf(pathBuffer.data(), pathBuffer.size(), "%s", path.c_str());
+    currentPath = pathBuffer.data();
 }
 
 const std::string& App::getCurrentPath() const
