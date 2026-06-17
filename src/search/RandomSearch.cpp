@@ -40,7 +40,7 @@ SearchResult RandomSearch::search(
     std::mt19937 generator(randomDevice());
 
     std::set<int> involvedNodes;
-    std::set<int> visited;
+    std::set<int> activePathNodes;
     std::vector<int> currentPath;
     int wave = 0;
 
@@ -48,7 +48,7 @@ SearchResult RandomSearch::search(
     result.path = currentPath;
     result.visitedNodes.push_back(sourceNodeId);
     involvedNodes.insert(sourceNodeId);
-    visited.insert(sourceNodeId);
+    activePathNodes.insert(sourceNodeId);
 
     result.steps.push_back({
         SearchStepType::VisitNode,
@@ -131,7 +131,7 @@ SearchResult RandomSearch::search(
 
         for (int nextNodeId : neighbors)
         {
-            if (visited.find(nextNodeId) != visited.end())
+            if (activePathNodes.find(nextNodeId) != activePathNodes.end())
             {
                 continue;
             }
@@ -155,7 +155,7 @@ SearchResult RandomSearch::search(
             currentPath.push_back(nextNodeId);
             result.visitedNodes.push_back(nextNodeId);
             involvedNodes.insert(nextNodeId);
-            visited.insert(nextNodeId);
+            activePathNodes.insert(nextNodeId);
 
             result.steps.push_back({
                 SearchStepType::VisitNode,
@@ -175,6 +175,7 @@ SearchResult RandomSearch::search(
             }
 
             currentPath.pop_back();
+            activePathNodes.erase(nextNodeId);
         }
 
         return false;
